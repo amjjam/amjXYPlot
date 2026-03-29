@@ -6,6 +6,8 @@
 #include <QTimer>
 #include <QSettings>
 
+#include <qcustomplot.h>
+
 class QCustomPlot;
 class QCPGraph;
 class QCPItemLine;
@@ -27,10 +29,14 @@ public:
 
     template <typename TX, typename TY>
     void setCurveData(const QString& name, const QVector<TX>& x, const QVector<TY>& y);
-
+  void setCurveColor(const QString& name, const QColor& color);
+  void setCurveVisible(const QString& name, bool visible);
+  
     void setCurvePanel(const QString& name, int panel);
     void setPanelCount(int n);
     void setSharedXAxis(bool shared);
+    void setXAxisRange(double lower, double upper, int panel= -1);
+    void setYAxisRange(double lower, double upper, int panel = -1);
 
     void setFrozen(bool frozen);
 
@@ -40,28 +46,40 @@ protected:
 private slots:
     void replotCoalesced();
     void openConfigDialog();
+    void onLegendClick(QCPLegend* legend, QCPAbstractLegendItem* item, QMouseEvent* event);
 
 private:
-    struct Curve
-    {
-        QCPGraph* graph{nullptr};
-        int panel{0};
-    };
-
+  struct Curve
+  {
+    QVector<double> x;
+    QVector<double> y;
+    QCPGraph* graph{nullptr};
+    int panel{0};
+    
+    QColor color;
+    bool visible{true};
+  };
+  
     struct PendingData
     {
         QVector<double> x;
         QVector<double> y;
     };
-
+  
+  QVector<QColor> m_defaultColors {
+    Qt::red, Qt::green, Qt::blue, Qt::magenta, Qt::cyan,
+    Qt::darkYellow, Qt::black, Qt::darkBlue, Qt::darkRed, Qt::darkGreen
+  };
     void setupUI();
     void rebuildPanels();
-    void reassignGraphs();
+  void applyLegendStyle();
+  void reassignGraphs();
     void applyPending();
     void updateCrosshair(const QPoint& pos);
     double findNearestY(QCPGraph* graph, double x);
 
     QCustomPlot* m_plot{nullptr};
+  QCPLegend* m_legend{nullptr};
     QMap<QString, Curve> m_curves;
     QMap<QString, PendingData> m_pendingWhileFrozen;
 

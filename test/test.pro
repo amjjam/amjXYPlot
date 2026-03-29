@@ -10,13 +10,19 @@ CONFIG += c++17
 
 SOURCES += \
     main.C \
-    amjXYPlotTest.C
+    amjXYPlotTest.C \
+    ../amjXYPlot/XYPlot.C
 
 HEADERS += \
-    amjXYPlotTest.H
+    amjXYPlotTest.H \
+    ../amjXYPlot/XYPlot.H
 
 FORMS += \
     amjXYPlotTest.ui
+
+INCLUDEPATH += ../amjXYPlot /opt/QCustomPlot/include /opt/amj/include
+LIBS += -L/opt/QCustomPlot/lib/ -lqcustomplot -L/opt/amj/lib -lamjWidgets
+QMAKE_RPATHDIR += /opt/QCustomPlot/lib
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

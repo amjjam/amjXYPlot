@@ -2,6 +2,9 @@
 #define AMJXYPLOTTEST_H
 
 #include <QMainWindow>
+#include <QTimer>
+
+#include <amjWidgets.H>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -18,5 +21,9 @@ public:
 
 private:
   Ui::amjXYPlotTest *ui;
+  QTimer timer;
+  int counter;
+  amjWidgets::RateCounter *rateCounter;
+  void update_graphs();
 };
 #endif// AMJXYPLOTTEST_H
