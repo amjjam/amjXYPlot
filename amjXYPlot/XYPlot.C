@@ -30,6 +30,72 @@ void XYPlot::setupUI()
     layout->addWidget(m_plot);
     m_plot->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom|QCP::iSelectLegend);
     connect(m_plot, &QCustomPlot::legendClick,this, &XYPlot::onLegendClick);
+    connect(m_plot, &QCustomPlot::mousePress, this,[this](QMouseEvent* event){
+      const double tol = 12.0;
+      
+      for (int i = 0; i < m_panels.size(); ++i)
+	{
+	  double dx = m_xResetButtons[i]->selectTest(event->pos(), false);
+	  double dy = m_yResetButtons[i]->selectTest(event->pos(), false);
+	  
+	  bool xHit = dx >= 0 && dx < tol;
+	  bool yHit = dy >= 0 && dy < tol;
+	  
+	  // If both hit → choose closest
+	  if (xHit && yHit)
+        {
+	  if (dx < dy)
+            {
+	      m_panels[i]->axis(QCPAxis::atBottom)
+		->setRange(m_defaultXRanges[i]);
+            }
+	  else
+            {
+	      m_panels[i]->axis(QCPAxis::atLeft)
+		->setRange(m_defaultYRanges[i]);
+            }
+	  
+	  m_replotPending = true;
+	  return;
+        }
+	  
+	  if (xHit)
+	    {
+	      m_panels[i]->axis(QCPAxis::atBottom)
+                ->setRange(m_defaultXRanges[i]);
+	      
+	      m_replotPending = true;
+	      return;
+	    }
+	  
+	  if (yHit)
+	    {
+	      m_panels[i]->axis(QCPAxis::atLeft)
+                ->setRange(m_defaultYRanges[i]);
+	      
+	      m_replotPending = true;
+	      return;
+	    }
+	}
+    });
+ // for (int i = 0; i < m_panels.size(); ++i){
+ // 	// X reset
+ //        if (m_xResetButtons[i]->selectTest(event->pos(), false) >= 0){
+ // 	  if (i < m_defaultXRanges.size())
+ // 	    m_panels[i]->axis(QCPAxis::atBottom)->setRange(m_defaultXRanges[i]);
+ // 	  m_replotPending = true;
+ // 	  return;
+ //        }
+	
+ //        // Y reset
+ //        if (m_yResetButtons[i]->selectTest(event->pos(), false) >= 0){
+ // 	  if (i < m_defaultYRanges.size())
+ // 	    m_panels[i]->axis(QCPAxis::atLeft)->setRange(m_defaultYRanges[i]);
+ // 	  m_replotPending = true;
+ // 	  return;
+ //        }
+ //      }
+ //    });
     
     rebuildPanels();
 
@@ -127,36 +193,115 @@ void XYPlot::onLegendClick(QCPLegend* /*legend*/,
     }
 }
 
-// void XYPlot::onLegendClick(QCPLegend* /*legend*/,
-//                           QCPAbstractLegendItem* item,
-//                           QMouseEvent* /*event*/)
-// {
-//     // We only care about plottable legend items
-//     auto* plItem = qobject_cast<QCPPlottableLegendItem*>(item);
-//     if (!plItem) return;
-
-//     QCPGraph* graph = qobject_cast<QCPGraph*>(plItem->plottable());
-//     if (!graph) return;
-
-//     // Find matching curve
-//     for (auto it = m_curves.begin(); it != m_curves.end(); ++it)
-//     {
-//         if (it.value().graph == graph)
-//         {
-//             bool newVisible = !it.value().visible;
-//             setCurveVisible(it.key(), newVisible);
-
-//             // Optional: fade legend text when hidden
-//             plItem->setTextColor(newVisible ? Qt::black : Qt::gray);
-
-//             break;
-//         }
-//     }
-// }
 
 void XYPlot::rebuildPanels()
 {
-    // 🔥 CLEAN UP old legend FIRST
+    if (!m_plot) return;
+
+    // --------------------------------------------------
+    // 1. Clean up old reset buttons
+    // --------------------------------------------------
+    for (auto* b : m_xResetButtons) delete b;
+    for (auto* b : m_yResetButtons) delete b;
+    m_xResetButtons.clear();
+    m_yResetButtons.clear();
+
+    // --------------------------------------------------
+    // 2. Remove old panels
+    // --------------------------------------------------
+    m_plot->plotLayout()->clear();
+    m_panels.clear();
+    m_plot->clearGraphs();
+
+    int nPanels = std::max(1, m_panelCount);
+
+    // Ensure default range storage matches panel count
+    m_defaultXRanges.resize(nPanels);
+    m_defaultYRanges.resize(nPanels);
+
+    // --------------------------------------------------
+    // 3. Create panels (QCPAxisRect)
+    // --------------------------------------------------
+    for (int i = 0; i < nPanels; ++i)
+    {
+        QCPAxisRect* rect = new QCPAxisRect(m_plot);
+
+        rect->setupFullAxesBox(true);
+
+        // Only bottom panel shows x-axis labels if shared
+        if (m_sharedXAxis && i < nPanels - 1)
+        {
+            rect->axis(QCPAxis::atBottom)->setTickLabels(false);
+            rect->axis(QCPAxis::atBottom)->setLabel("");
+        }
+
+        m_plot->plotLayout()->addElement(i, 0, rect);
+        m_panels.push_back(rect);
+    }
+
+    // --------------------------------------------------
+    // 4. Link X axes if shared
+    // --------------------------------------------------
+    if (m_sharedXAxis && m_panels.size() > 1)
+    {
+        for (int i = 1; i < m_panels.size(); ++i)
+        {
+            connect(m_panels[i]->axis(QCPAxis::atBottom),
+                    SIGNAL(rangeChanged(QCPRange)),
+                    m_panels[0]->axis(QCPAxis::atBottom),
+                    SLOT(setRange(QCPRange)));
+        }
+    }
+
+    // --------------------------------------------------
+    // 5. Apply stored/default ranges (if valid)
+    // --------------------------------------------------
+    for (int i = 0; i < m_panels.size(); ++i)
+    {
+        if (m_defaultXRanges[i].size() > 0)
+            m_panels[i]->axis(QCPAxis::atBottom)->setRange(m_defaultXRanges[i]);
+
+        if (m_defaultYRanges[i].size() > 0)
+            m_panels[i]->axis(QCPAxis::atLeft)->setRange(m_defaultYRanges[i]);
+    }
+
+    // --------------------------------------------------
+    // 6. Create reset buttons (AFTER panels exist)
+    // --------------------------------------------------
+    for (int i = 0; i < m_panels.size(); ++i)
+    {
+        auto* rect = m_panels[i];
+
+        // --- X reset button ---
+        QCPItemText* xBtn = new QCPItemText(m_plot);
+        xBtn->setText("⟲");
+        xBtn->setColor(Qt::darkGray);
+        xBtn->setSelectable(true);
+
+        xBtn->position->setType(QCPItemPosition::ptAxisRectRatio);
+        xBtn->position->setAxisRect(rect);
+        xBtn->position->setCoords(0.98, 0.98);
+        xBtn->setPositionAlignment(Qt::AlignRight | Qt::AlignBottom);
+
+        m_xResetButtons.push_back(xBtn);
+
+        // --- Y reset button ---
+        QCPItemText* yBtn = new QCPItemText(m_plot);
+        yBtn->setText("⟲");
+        yBtn->setColor(Qt::darkGray);
+        yBtn->setSelectable(true);
+
+        yBtn->position->setType(QCPItemPosition::ptAxisRectRatio);
+        yBtn->position->setAxisRect(rect);
+        yBtn->position->setCoords(0.02, 0.02);
+        yBtn->setPositionAlignment(Qt::AlignLeft | Qt::AlignTop);
+
+        m_yResetButtons.push_back(yBtn);
+    }
+
+    // --------------------------------------------------
+    // 7. Rebuild legend (if you are doing custom legend)
+    // --------------------------------------------------
     if (m_legend)
     {
         m_plot->plotLayout()->remove(m_legend);
@@ -164,38 +309,42 @@ void XYPlot::rebuildPanels()
         m_legend = nullptr;
     }
 
-    // Now safe to clear layout
-    m_plot->plotLayout()->clear();
-    m_panels.clear();
-
-    // Create main grid
-    QCPLayoutGrid* grid = new QCPLayoutGrid;
-    m_plot->plotLayout()->addElement(0, 0, grid);
-
-    // Create panels
-    for (int i = 0; i < m_panelCount; i++)
-    {
-        QCPAxisRect* rect = new QCPAxisRect(m_plot);
-        grid->addElement(i, 0, rect);
-        m_panels.append(rect);
-    }
-
-    // Create new legend
     m_legend = new QCPLegend;
-    m_plot->plotLayout()->addElement(1, 0, m_legend);
-
-    m_legend->setVisible(true);
-    m_legend->setBrush(QBrush(QColor(255,255,255,200)));
     m_legend->setFillOrder(QCPLegend::foColumnsFirst);
     m_legend->setWrap(5);
-    m_legend->setMargins(QMargins(5,5,5,5));
-    m_legend->setMaximumSize(QSize(QWIDGETSIZE_MAX,50));
-    
-    m_plot->plotLayout()->setRowStretchFactor(0, 10);
-    m_plot->plotLayout()->setRowStretchFactor(1, 1);
+
+    m_plot->plotLayout()->addElement(m_panels.size(), 0, m_legend);
+    // Panels get full weight
+for (int i = 0; i < m_panels.size(); ++i)
+{
+    m_plot->plotLayout()->setRowStretchFactor(i, 1);
+}
+
+// Legend gets tiny weight
+m_plot->plotLayout()->setRowStretchFactor(m_panels.size(), 0.01);
 
     
-    reassignGraphs();
+    // --------------------------------------------------
+    // 8. IMPORTANT: Reattach graphs to panels (your logic)
+    // --------------------------------------------------
+    for (auto& c : m_curves)
+    {
+        int panel = c.panel;
+        if (panel >= 0 && panel < m_panels.size())
+        {
+            m_plot->addGraph(
+                m_panels[panel]->axis(QCPAxis::atBottom),
+                m_panels[panel]->axis(QCPAxis::atLeft)
+            );
+
+            c.graph = m_plot->graph(m_plot->graphCount() - 1);
+        }
+    }
+
+    // --------------------------------------------------
+    // 9. Done
+    // --------------------------------------------------
+    m_replotPending = true;
 }
 
 
@@ -241,10 +390,14 @@ void XYPlot::setXAxisRange(double lower, double upper, int panel)
 
     if (panel < 0 || m_sharedXAxis)
     {
-        // Apply to all panels
-        for (auto* rect : m_panels)
+        for (int i = 0; i < m_panels.size(); ++i)
         {
-            rect->axis(QCPAxis::atBottom)->setRange(lower, upper);
+            m_panels[i]->axis(QCPAxis::atBottom)->setRange(lower, upper);
+
+            if (i >= m_defaultXRanges.size())
+                m_defaultXRanges.resize(m_panels.size());
+
+            m_defaultXRanges[i] = QCPRange(lower, upper);
         }
     }
     else
@@ -252,6 +405,11 @@ void XYPlot::setXAxisRange(double lower, double upper, int panel)
         if (panel >= m_panels.size()) return;
 
         m_panels[panel]->axis(QCPAxis::atBottom)->setRange(lower, upper);
+
+        if (panel >= m_defaultXRanges.size())
+            m_defaultXRanges.resize(m_panels.size());
+
+        m_defaultXRanges[panel] = QCPRange(lower, upper);
     }
 
     m_replotPending = true;
@@ -263,20 +421,31 @@ void XYPlot::setYAxisRange(double lower, double upper, int panel)
 
     if (panel < 0)
     {
-        // Apply to all panels
-        for (auto* rect : m_panels)
+        for (int i = 0; i < m_panels.size(); ++i)
         {
-            rect->axis(QCPAxis::atLeft)->setRange(lower, upper);
+            m_panels[i]->axis(QCPAxis::atLeft)->setRange(lower, upper);
+
+            if (i >= m_defaultYRanges.size())
+                m_defaultYRanges.resize(m_panels.size());
+
+            m_defaultYRanges[i] = QCPRange(lower, upper);
         }
     }
     else
     {
         if (panel >= m_panels.size()) return;
+
         m_panels[panel]->axis(QCPAxis::atLeft)->setRange(lower, upper);
+
+        if (panel >= m_defaultYRanges.size())
+            m_defaultYRanges.resize(m_panels.size());
+
+        m_defaultYRanges[panel] = QCPRange(lower, upper);
     }
 
     m_replotPending = true;
 }
+
 
 void XYPlot::addCurve(const QString& name)
 {
@@ -343,26 +512,6 @@ void XYPlot::setCurveColor(const QString& name, const QColor& color)
     m_replotPending = true;
 }
 
-// void XYPlot::setCurveVisible(const QString& name, bool visible)
-// {
-//     if (!m_curves.contains(name)) return;
-
-//     auto& c = m_curves[name];
-//     c.visible = visible;
-
-//     if (c.graph)
-//     {
-//         c.graph->setVisible(visible);
-
-//         // 🔥 ADD THIS BLOCK HERE
-//         QPen pen = c.graph->pen();
-//         pen.setColor(visible ? c.color : Qt::gray);
-//         pen.setStyle(visible ? Qt::SolidLine : Qt::DotLine);
-//         c.graph->setPen(pen);
-//     }
-
-//     m_replotPending = true;
-// }
 void XYPlot::setCurveVisible(const QString& name, bool visible)
 {
     if (!m_curves.contains(name)) return;

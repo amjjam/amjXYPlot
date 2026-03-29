@@ -78,11 +78,19 @@ private:
     void updateCrosshair(const QPoint& pos);
     double findNearestY(QCPGraph* graph, double x);
 
-    QCustomPlot* m_plot{nullptr};
+  QCustomPlot* m_plot{nullptr};
   QCPLegend* m_legend{nullptr};
-    QMap<QString, Curve> m_curves;
-    QMap<QString, PendingData> m_pendingWhileFrozen;
+  QMap<QString, Curve> m_curves;
+  QMap<QString, PendingData> m_pendingWhileFrozen;
 
+  // Last range set with set X/Y AxisRange, so it can be restored with click
+  QVector<QCPRange> m_defaultXRanges;
+  QVector<QCPRange> m_defaultYRanges;
+
+  // Axis reset range buttons
+  QVector<QCPItemText*> m_xResetButtons;
+  QVector<QCPItemText*> m_yResetButtons;
+  
     QVector<QCPAxisRect*> m_panels;
     int m_panelCount{1};
     bool m_sharedXAxis{true};
