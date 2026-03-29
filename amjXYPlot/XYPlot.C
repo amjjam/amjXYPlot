@@ -65,30 +65,94 @@ void XYPlot::openConfigDialog()
 
 void XYPlot::onLegendClick(QCPLegend* /*legend*/,
                           QCPAbstractLegendItem* item,
-                          QMouseEvent* /*event*/)
+                          QMouseEvent* event)
 {
-    // We only care about plottable legend items
     auto* plItem = qobject_cast<QCPPlottableLegendItem*>(item);
     if (!plItem) return;
 
     QCPGraph* graph = qobject_cast<QCPGraph*>(plItem->plottable());
     if (!graph) return;
 
-    // Find matching curve
+    QString clickedName;
+
+    // Find which curve was clicked
     for (auto it = m_curves.begin(); it != m_curves.end(); ++it)
     {
         if (it.value().graph == graph)
         {
-            bool newVisible = !it.value().visible;
-            setCurveVisible(it.key(), newVisible);
-
-            // Optional: fade legend text when hidden
-            plItem->setTextColor(newVisible ? Qt::black : Qt::gray);
-
+            clickedName = it.key();
             break;
         }
     }
+
+    if (clickedName.isEmpty()) return;
+
+    // ---- CTRL CLICK → SOLO / RESTORE TOGGLE ----
+    if (event->modifiers() & Qt::ControlModifier)
+    {
+        bool alreadySolo = true;
+
+        for (auto it = m_curves.begin(); it != m_curves.end(); ++it)
+        {
+            if (it.key() == clickedName)
+            {
+                if (!it.value().visible)
+                    alreadySolo = false;
+            }
+            else
+            {
+                if (it.value().visible)
+                    alreadySolo = false;
+            }
+        }
+
+        if (alreadySolo)
+        {
+            // Restore all curves
+            for (auto it = m_curves.begin(); it != m_curves.end(); ++it)
+                setCurveVisible(it.key(), true);
+        }
+        else
+        {
+            // Solo the clicked curve
+            for (auto it = m_curves.begin(); it != m_curves.end(); ++it)
+                setCurveVisible(it.key(), it.key() == clickedName);
+        }
+    }
+    else
+    {
+        // ---- NORMAL CLICK → TOGGLE ----
+        bool newVisible = !m_curves[clickedName].visible;
+        setCurveVisible(clickedName, newVisible);
+    }
 }
+
+// void XYPlot::onLegendClick(QCPLegend* /*legend*/,
+//                           QCPAbstractLegendItem* item,
+//                           QMouseEvent* /*event*/)
+// {
+//     // We only care about plottable legend items
+//     auto* plItem = qobject_cast<QCPPlottableLegendItem*>(item);
+//     if (!plItem) return;
+
+//     QCPGraph* graph = qobject_cast<QCPGraph*>(plItem->plottable());
+//     if (!graph) return;
+
+//     // Find matching curve
+//     for (auto it = m_curves.begin(); it != m_curves.end(); ++it)
+//     {
+//         if (it.value().graph == graph)
+//         {
+//             bool newVisible = !it.value().visible;
+//             setCurveVisible(it.key(), newVisible);
+
+//             // Optional: fade legend text when hidden
+//             plItem->setTextColor(newVisible ? Qt::black : Qt::gray);
+
+//             break;
+//         }
+//     }
+// }
 
 void XYPlot::rebuildPanels()
 {
